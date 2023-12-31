@@ -1,8 +1,26 @@
+function ceilToNearestTen(num) {
+  return Math.ceil(num / 10) * 10;
+}
+
+const textInput = document.getElementById('text');
+textInput.addEventListener('keypress', (e) => {
+  if (e.keyCode === 13) {
+    const inputValue = e.target.value;
+    if (inputValue === '') return;
+    console.log('Input Value:', inputValue);
+    effect.text = inputValue;
+    effect.init('text');
+
+    const customText = document.getElementById('custom-text');
+    customText.style.display = 'none';
+  }
+});
+
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+canvas.width = ceilToNearestTen(window.innerWidth);
+canvas.height = ceilToNearestTen(window.innerHeight);
 
 ctx.fillStyle = 'white';
 ctx.strokeStyle = 'white';
@@ -46,9 +64,10 @@ class Particle {
   update() {
     this.timer--;
     if (this.timer >= 1) {
-      let x = Math.floor(this.x / this.effect.cellSize);
-      let y = Math.floor(this.y / this.effect.cellSize);
-      let index = y * this.effect.cols + x;
+      const x = Math.floor(this.x / this.effect.cellSize);
+      const y = Math.floor(this.y / this.effect.cellSize);
+      const index = y * this.effect.cols + x;
+
       this.angle = this.effect.flowField[index];
 
       this.speedX = Math.cos(this.angle);
@@ -76,8 +95,9 @@ class Particle {
 }
 
 class Effect {
-  constructor(canvas) {
+  constructor(canvas, ctx) {
     this.canvas = canvas;
+    this.context = ctx;
     this.width = this.canvas.width;
     this.height = this.canvas.height;
     this.particles = [];
@@ -89,30 +109,85 @@ class Effect {
     this.curve = 1.3;
     this.zoom = 0.07;
     this.debug = false;
+    this.text = '';
     this.init();
 
     window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT') return;
       if (e.key === 'd') {
         this.debug = !this.debug;
       }
     });
 
     window.addEventListener('resize', (e) => {
-      this.resize(e.target.innerWidth, e.target.innerHeight);
+      this.resize(
+        ceilToNearestTen(e.target.innerWidth),
+        ceilToNearestTen(e.target.innerHeight)
+      );
     });
   }
 
-  init() {
-    // create flow field
-    this.rows = Math.floor(this.height / this.cellSize);
-    this.cols = Math.floor(this.width / this.cellSize);
+  drawText() {
+    this.context.font = '400px impact';
+    this.context.textAlign = 'center';
+    this.context.textBaseline = 'middle';
+
+    const gradient1 = this.context.createRadialGradient(
+      this.width * 0.5,
+      this.height * 0.5,
+      10,
+      this.width * 0.5,
+      this.height * 0.5,
+      this.width
+    );
+    gradient1.addColorStop(0.2, 'rgb(255,0,0)');
+    gradient1.addColorStop(0.4, 'rgb(255,255,0)');
+    gradient1.addColorStop(0.6, 'rgb(0,255,255)');
+    gradient1.addColorStop(0.8, 'rgb(0,0,255)');
+
+    this.context.fillStyle = gradient1;
+    this.context.fillText(this.text, this.width * 0.5, this.height * 0.5);
+  }
+
+  initDefault() {
     this.flowField = [];
     for (let y = 0; y < this.rows; y++) {
       for (let x = 0; x < this.cols; x++) {
-        let angle =
+        const angle =
           (Math.cos(x * this.zoom) + Math.sin(y * this.zoom)) * this.curve;
         this.flowField.push(angle);
       }
+    }
+  }
+
+  initText() {
+    this.flowField = [];
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    this.drawText();
+
+    const pixles = this.context.getImageData(0, 0, this.width, this.height);
+    for (let y = 0; y < this.height; y += this.cellSize) {
+      for (let x = 0; x < this.width; x += this.cellSize) {
+        const index = (y * this.width + x) * 4;
+        const red = pixles.data[index];
+        const green = pixles.data[index + 1];
+        const blue = pixles.data[index + 2];
+        const grayscale = (red + green + blue) / 3;
+        const colorAngle = (grayscale / 255) * 6.26;
+        this.flowField.push(colorAngle);
+      }
+    }
+  }
+
+  init(type) {
+    // create flow field
+    this.rows = Math.floor(this.height / this.cellSize);
+    this.cols = Math.floor(this.width / this.cellSize);
+
+    if (type === 'text') {
+      this.initText();
+    } else {
+      this.initDefault();
     }
 
     // crate particles
@@ -122,31 +197,34 @@ class Effect {
     }
   }
 
-  render(context) {
-    if (this.debug) this.drawGrid(context);
+  render() {
+    if (this.debug) {
+      this.drawGrid();
+      this.drawText();
+    }
     this.particles.forEach((particle) => {
-      particle.draw(context);
+      particle.draw(this.context);
       particle.update();
     });
   }
 
-  drawGrid(context) {
-    context.save();
-    context.strokeStyle = 'red';
-    context.lineWidth = 0.2;
+  drawGrid() {
+    this.context.save();
+    this.context.strokeStyle = 'red';
+    this.context.lineWidth = 0.2;
     for (let c = 0; c < this.cols; c++) {
-      context.beginPath();
-      context.moveTo(this.cellSize * c, 0);
-      context.lineTo(this.cellSize * c, this.height);
-      context.stroke();
+      this.context.beginPath();
+      this.context.moveTo(this.cellSize * c, 0);
+      this.context.lineTo(this.cellSize * c, this.height);
+      this.context.stroke();
     }
     for (let r = 0; r < this.rows; r++) {
-      context.beginPath();
-      context.moveTo(0, this.cellSize * r);
-      context.lineTo(this.width, this.cellSize * r);
-      context.stroke();
+      this.context.beginPath();
+      this.context.moveTo(0, this.cellSize * r);
+      this.context.lineTo(this.width, this.cellSize * r);
+      this.context.stroke();
     }
-    context.restore();
+    this.context.restore();
   }
 
   resize(width, height) {
@@ -157,11 +235,11 @@ class Effect {
   }
 }
 
-const effect = new Effect(canvas);
+const effect = new Effect(canvas, ctx);
 
 function animate() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  effect.render(ctx);
+  effect.render();
   requestAnimationFrame(animate);
 }
 animate();
